@@ -1,0 +1,25 @@
+#!/bin/sh
+
+uuid_file="/etc/dmcache-uuids"
+
+# Check if the file exists
+if [ ! -f "$uuid_file" ]; then
+    echo "Error: File '$uuid_file' not found."
+    exit 1
+fi
+
+# Loop through each UUID in the file and remove the corresponding symlink
+while IFS= read -r uuid; do
+
+	if [ -z "$uuid" ] || [ "${uuid:0:1}" = "#" ]; then
+		continue
+	fi
+
+    symlink="/dev/disk/by-uuid/$uuid"
+
+    # Check if the symlink exists
+    if [ -L "$symlink" ]; then
+        echo "Removing symlink: $symlink"
+        rm "$symlink"
+    fi
+done < "$uuid_file"

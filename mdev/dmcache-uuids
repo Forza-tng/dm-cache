@@ -1,0 +1,4 @@
+# Filesystem UUIDs that should be removed from
+# /dev/disk/by-uuid/
+# One UUID per row.
+44b2986e-0799-422a-9fb7-a534bbbc62a0
