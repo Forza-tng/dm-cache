@@ -1,0 +1,7 @@
+# /etc/udev/rules.d/90-dmcache.rules
+# udev rule for dm-cache to remove origin device FS UUID device link.
+#
+# `blkid` can be used to find the filesystem uuid:
+# /dev/sdj1: LABEL="usb-backup" UUID="df68a30d-d26e-4b9c-9606-a130e66ce63d"
+
+ENV{ID_FS_UUID_ENC}=="df68a30d-d26e-4b9c-9606-a130e66ce63d", KERNEL=="sd*", SUBSYSTEM=="block", ACTION=="add|change", SYMLINK-="disk/by-uuid/$env{ID_FS_UUID_ENC}"
