@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# mdev script to mask dm-cache origin device's FS UUID
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2023 Forza <forza@tnonline.net>
+
 uuid_file="/etc/dmcache-uuids"
 
 # Check if the file exists
