@@ -16,8 +16,6 @@ extra_started_commands="suspend resume cleaner"
 : "${cachepolicy:="default"}"
 : "${cachepolicyargs:=0}"
 : "${readahead:="auto"}"
-# dm-cache requires the origindev size in sectors.
-: "${originsize:="$(/sbin/blockdev --getsz "${origindev}")"}"
 
 depend() {
 	need dev modules
@@ -42,6 +40,8 @@ checkconfig() {
 		eerror "dmname not set!"
 		return 1
 	fi
+	# dm-cache requires the origindev size in sectors.
+	: "${originsize:="$(/sbin/blockdev --getsz "${origindev}")"}"
 }
 
 start() {
