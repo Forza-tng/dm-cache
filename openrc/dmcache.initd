@@ -1,0 +1,115 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh
+
+# dm-cache
+# A helper program to setup and manage device-mapper
+# cache devices.
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2023 Forza <forza@tnonline.net>
+
+name="dm-cache ${dmname}"
+description="Activates dm-cache devices"
+extra_started_commands="suspend resume cleaner"
+: "${cacheblock:=256}"
+: "${cachemode:="1 writethrough"}"
+: "${cachepolicy:="default"}"
+: "${cachepolicyargs:=0}"
+: "${readahead:="auto"}"
+# dm-cache requires the origindev size in sectors.
+: "${originsize:="$(/sbin/blockdev --getsz "${origindev}")"}"
+
+depend() {
+	need dev modules
+	use lvm
+	before localmount
+}
+
+checkconfig() {
+	if [ -z "${origindev}" ]; then
+		eerror "origindev not set!"
+		return 1
+	fi
+	if [ -z "${metadev}" ]; then
+		eerror "metadev not set!"
+		return 1
+	fi
+	if [ -z "${cachedev}" ]; then
+		eerror "cachedev not set!"
+		return 1
+	fi
+	if [ -z "${dmname}" ]; then
+		eerror "dmname not set!"
+		return 1
+	fi
+}
+
+start() {
+	checkconfig || return 1
+	ebegin "Creating dm-cache ${dmname}"
+
+	if findmnt "${origindev}" > /dev/null; then
+		eerror "Origin device is already mounted. Aborting."
+		exit 1
+	fi
+	
+	dmsetup create "${dmname}" --table "0 ${originsize} cache ${metadev} ${cachedev} ${origindev} ${cacheblock} ${cachemode} ${cachepolicy} ${cachepolicyargs}" --readahead "${readahead}"
+	eend $?
+}
+
+stop() {
+	if [ "$RC_RUNLEVEL" = "shutdown" ]; then
+		if findmnt "/dev/mapper/${dmname}" > /dev/null; then
+			ewarn "System is shutting down and \"${dmname}\" is still mounted!"
+			ewarn "Attempting to unmount holders..."
+			umount --all-targets "/dev/mapper/${dmname}" || eerror "Could not unmount!"
+		fi
+	else
+		if findmnt "/dev/mapper/${dmname}" > /dev/null; then
+			eerror "Cannot stop dm-cache. \"${dmname}\" is mounted!"
+			exit 1
+		fi
+	fi
+	ebegin "Stopping dm-cache ${dmname}"
+	# Cannot flush or stop a suapended device.
+	dmsetup resume "${dmname}"
+	blockdev --flushbufs "/dev/mapper/${dmname}"
+	einfo "Waiting for flush. This can take a while with large caches..."
+	dmsetup remove "${dmname}"
+	exit $?
+}
+
+cleaner() {
+	# The Cleaner policy attempts to write out cached data
+	# to the origin device at a higher rate. This is useful
+	# if you want to remove or decomission the dm-cache.
+	# Cleaner only makes sense for the 'writeback' mode.
+
+	checkconfig || return 1
+	ebegin "Enabling the Cleaner write cache policy."
+	dmsetup suspend "${dmname}"
+	dmsetup reload -r --table "0 ${originsize} cache ${metadev} ${cachedev} ${origindev} ${cacheblock} ${cachemode} cleaner 0" "${dmname}"
+	errorlevel=$?
+	if [ ! $errorlevel = 0 ]; then
+		ewarn "Could not change to Cleaner policy"
+	fi
+	dmsetup resume "${dmname}"
+	eend $?
+}
+
+suspend() {
+	checkconfig || return 1
+	if findmnt "/dev/mapper/${dmname}" > /dev/null; then
+		ewarn "Warning, \"${dmname}\" is mounted!"
+	fi
+	ebegin "Suspending \"${dmname}\""
+	dmsetup suspend "${dmname}"
+	eend $?
+}
+
+resume() {
+	checkconfig || return 1
+	ebegin "Resuming \"${dmname}\""
+	dmsetup resume "${dmname}"
+	eend $?
+}

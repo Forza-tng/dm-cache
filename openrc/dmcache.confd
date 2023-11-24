@@ -1,0 +1,74 @@
+# configuration file for dm-cache
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2023 Forza <forza@tnonline.net>
+#
+# Linux Cache admin documentation:
+# https://www.kernel.org/doc/html/latest/admin-guide/device-mapper/cache.html
+#
+
+# Mandatory options are:
+# dmname, cachedev, metadev, origindev
+
+# The assembled dm-cache device name
+# This will be available in /dev/mapper/<dmname>
+dmname="dmcache1"
+
+# The device to use as cache. Usually a fast
+# SSad or NVME device
+cachedev="/dev/disk/by-partlabel/cache"
+
+# A small device used to store dm-cache metadata
+metadev="/dev/disk/by-partlabel/meta"
+
+# The origin block device. This is the slow device
+# that should be accelerated with dm-cache.
+# DO NOT use a filesystem uuid here, but a device ID.
+# example:
+# origindev="/dev/disk/by-partuuid/ac0ae9b1-8e32-4e33-b641-998bc0298d14"
+# origindev="/dev/disk/by-id/ata-WDC_WD10JFCX-68N6GN0_WD-WX52A60PS33D-part1"
+origindev="/dev/disk/by-partlabel/data"
+
+# The following section has optional settings to tune the
+# device-mapper options for assembling the cache. 
+# These are advanced options. Make sure to read the Linux Cache 
+# documentation before changing these.
+
+# dm-cache requires the origindev size in 512 byte sectors.
+originsize="$(/sbin/blockdev --getsz ${origindev})"
+
+# Set read-ahead sectors for the mapped device.
+# This does not change the read-ahead for the underlying
+# devices.
+#readahead=256
+
+# Cache block size in 512 byte sectors.
+# 256 sectors = 128KiB size cache blocks
+#cacheblock=256
+
+# Write cache mode: writeback, writethrough or passthrough.
+#cachemode="1 writethrough"
+
+# Migration policy decides when to migrate data to/from cache
+# and origin device.
+#cachepolicy="default"
+
+# Additional policy arguments.
+#cachepolicyargs="0"
+
+
+# 'writethrough' cache (default):
+#  Write through caching prohibits cachedev content from being
+#  different from origindev content. This mode only accelerates
+#  reads, but should allow the origin device to be used without the
+#  cache dev after a crash. 
+#
+#  'writeback' cache:
+#  When write back cache is used. Writes are written to the
+#  cachedev first, before being synced in the background to the
+#  origindev.
+#  If the system crashes, the dm-cache must be assembled again
+#  before use to avoid serious filesystem damage.
+#  If the cachedev fails, the filesystem can be irrevokably damaged!
+
+
