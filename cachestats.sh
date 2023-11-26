@@ -13,6 +13,27 @@ declare -i sizess
 declare status_output
 declare -a dmstatus
 
+# Function to convert bytes to IEC units
+to_iec() {
+	local bytes kib mib gib tib
+	bytes=$1
+	kib=$(( (bytes + 512) / 1024 ))
+	mib=$(( (kib + 512) / 1024 ))
+	gib=$(( (mib + 512) / 1024 ))
+	tib=$(( (gib + 512) / 1024 ))
+	if [ $tib -gt 0 ]; then
+		echo "${tib} TiB"
+	elif [ $gib -gt 0 ]; then
+		echo "${gib} GiB"
+	elif [ $mib -gt 0 ]; then
+		echo "${mib} MiB"
+	elif [ $kib -gt 0 ]; then
+		echo "${kib} KiB"
+	else
+		echo "${bytes} bytes"
+	fi
+}
+
 # Get the status output using dmsetup
 status_output=$(dmsetup status "$device_name" 2>/dev/null)
 
@@ -84,40 +105,31 @@ if [ -n "$status_output" ]; then
 #	done |sort
 
 	# Output defined fields
-	printf "\n"
 	printf "DEVICE\n"
 	printf "========\n"
-	printf "%-*s%s\n" "30" "Device-mapper device: " "${data[name]}"
-	printf "%-*s%s\n" "30" "Origin size: " "$(( ${data[origin_length]} - ${data[origin_start]} )) bytes"
-	printf "%-*s%s\n" "30" "Discards: " "${data[discard_passdown]}"
+	printf "%-*s%s\n" "26" "Device-mapper name: " "/dev/mapper/${data[name]}"
+	printf "%-*s%s\n" "26" "Origin size: " "$(to_iec $(( ${data[origin_length]} - ${data[origin_start]} )) )"
+	printf "%-*s%s\n" "26" "Discards: " "${data[discard_passdown]}"
 
 	printf "\n"
 	printf "CACHE\n"
 	printf "========\n"
-	printf "%-*s%s\n" "30" "Cache Size: " "$(( ${data[total_cache_blocks]} * ${data[cache_block_size]} )) bytes"
-	printf "%-*s%s\n" "30" "Cache Usage: "  "$(( ${data[used_cache_blocks]} * ${data[cache_block_size]} )) bytes"
-	printf "%-*s%s\n" "30" "Cache Usage: " "$(( 100 * ${data[used_cache_blocks]} / ${data[total_cache_blocks]} )) %"
-	printf "%-*s%s\n" "30" "Cache Read Hit: " "${data[read_hits]}"
-	printf "%-*s%s\n" "30" "Cache Read Miss: " "${data[read_misses]}"
-	printf "%-*s%s\n" "30" "Cache Write Hit: " "${data[write_hits]}"
-	printf "%-*s%s\n" "30" "Cache Write Miss: " "${data[write_misses]}"
-	printf "%-*s%s\n" "30" "Cache Dirty: " "${data[dirty_cache]} bytes"
-	printf "%-*s%s\n" "30" "Cache Block Size: " "${data[cache_block_size]} bytes"
-	printf "%-*s%s\n" "30" "Cache Promotions: " "${data[promotions]}"
-	printf "%-*s%s\n" "30" "Cache Demotions: " "${data[demotions]}"
-	printf "%-*s%s\n" "30" "Cache Migration Threshold: " "${data[migration_threshold]} bytes"
-	printf "%-*s%s\n" "30" "Cache RW mode: " "${data[cache_rw]}"
-	printf "%-*s%s\n" "30" "Cache Type: " "${data[cache_type]}"
-	printf "%-*s%s\n" "30" "Cache Policy: " "${data[cache_policy]}"
-	printf "%-*s%s\n" "30" "Cache Status: " "${data[status]}"
+	printf "%-*s%s\n" "26" "Size / Usage: " "$(to_iec $((${data[total_cache_blocks]} * ${data[cache_block_size]}))) / $(to_iec $(( ${data[used_cache_blocks]} * ${data[cache_block_size]} ))) ($(( 100 * ${data[used_cache_blocks]} / ${data[total_cache_blocks]} )) %)"
+	printf "%-*s%s\n" "26" "Read Hit Rate: " "${data[read_hits]} / $((${data[read_misses]} + ${data[read_hits]})) ($(( 100 * ${data[read_hits]} / (${data[read_hits]} + ${data[read_misses]}) )) %)"
+	printf "%-*s%s\n" "26" "Write Hit Rate: " "${data[write_hits]} / $((${data[write_misses]} + ${data[write_hits]})) ($(( 100 * ${data[write_hits]} / (${data[write_hits]} + ${data[write_misses]}) )) %)"
+	printf "%-*s%s\n" "26" "Dirty: " "$(to_iec ${data[dirty_cache]})"
+	printf "%-*s%s\n" "26" "Block Size: " "$(to_iec ${data[cache_block_size]})"
+	printf "%-*s%s\n" "26" "Promotions / Demotions: " "${data[promotions]} / ${data[demotions]}"
+	printf "%-*s%s\n" "26" "Migration Threshold: " "$(to_iec ${data[migration_threshold]})"
+	printf "%-*s%s\n" "26" "Read-Write mode: " "${data[cache_rw]}"
+	printf "%-*s%s\n" "26" "Type: " "${data[cache_type]}"
+	printf "%-*s%s\n" "26" "Policy: " "${data[cache_policy]}"
+	printf "%-*s%s\n" "26" "Status: " "${data[status]}"
 
 	printf "\n"
 	printf "METADATA\n"
 	printf "========\n"
-	printf "%-*s%s\n" "30" "Metadata Size: " "$(( ${data[total_metadata_blocks]} * ${data[metadata_block_size]} )) bytes"
-	printf "%-*s%s\n" "30" "Metadata Usage: "  "$(( ${data[used_metadata_blocks]} * ${data[metadata_block_size]} )) bytes"
-	printf "%-*s%s\n" "30" "Metadata Usage: " "$(( 100 * ${data[used_metadata_blocks]} / ${data[total_metadata_blocks]} )) %"
-
+	printf "%-*s%s\n" "26" "Size / Usage: " "$(to_iec $(( ${data[total_metadata_blocks]} * ${data[metadata_block_size]} ))) / $(to_iec $(( ${data[used_metadata_blocks]} * ${data[metadata_block_size]} ))) ($(( 100 * ${data[used_metadata_blocks]} / ${data[total_metadata_blocks]} )) %)"
 else
     echo "Device not found or no valid status output."
 fi
