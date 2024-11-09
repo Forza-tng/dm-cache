@@ -3,41 +3,48 @@
 # cachestats for dm-cache
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Copyright 2023 Forza <forza@tnonline.net>
+# Copyright 2023-2024 Forza <forza@tnonline.net>
 
 
-# cacheatats usage
+# Help text
 usage() {
-	echo "Usage: $(basename "${0}") [DEVICE_NAME or PATH] [DEVICE_NAME or PATH] ..."
-	echo "  -h, --help  Display this help message"
+	echo "Usage: $(basename "$0") [-v|--verbose] [DEVICE_NAME or PATH] [DEVICE_NAME or PATH] ..."
+	echo "Options:"
+	echo "  -h, --help      Display this help message"
+	echo "  -v, --verbose   Display detailed information"
 }
-
 # Check for help option or no arguments
 if [ "$#" -eq 0 ]; then
     usage
     exit 1
 fi
-if [ "${1:0:1}" == "-" ]; then
+if [[ "${1:0:1}" == "-" ]]; then
 	case "$1" in
 		-h|--help)
 			usage
-			exit 1
+			exit 0
+			;;
+		-v|--verbose)
+			VERBOSE=1
+			shift
 			;;
 		*)
 			echo "Invalid option: $1"
 			usage
 			exit 1
 			;;
-		esac
+	esac
 fi
 
-# Declare used variables
-declare -A data    		# associative array
-declare -a dmstatus		# indexed array
-declare -i sizess  		# integer variable
+# Declare variables
+declare -A data
+declare -a dmstatus
+declare -a expanded_devices
+declare -i sizess
 declare status_output
 declare device_name_or_path
 declare device_name
+declare separator_needed
 
 # Function to convert bytes to IEC units
 to_iec() {
@@ -72,7 +79,7 @@ debug_output(){
 	# <#core args> <core args>* <policy name> <#policy args> <policy args>*
 	# <cache metadata mode>
 
-	# Loop through throuh all fields to list and print their values
+	# Loop through through all fields to list and print their values
 	if (( DEBUG > 0 )) ; then
 		printf "\nDEBUG INFO\n"
 		printf "========\n"
@@ -95,8 +102,29 @@ debug_output(){
 	fi
 }
 
+# Expand wildcard patterns for devices
+for arg in "$@"; do
+	if [[ "$arg" == /* ]]; then
+		# Full path provided, use as-is
+		expanded_devices+=("$arg")
+	else
+		# Assume partial name; expand in /dev/mapper
+		# shellcheck disable=SC2231
+		for device in /dev/mapper/${arg}*; do
+			if [[ -e $device ]]; then
+				expanded_devices+=("$device")
+			else
+				echo "No matching devices for pattern: $arg" >&2
+			fi
+		done
+	fi
+done
+
+# Add separator if there is more than one device
+separator_needed=$(( ${#expanded_devices[@]} > 1 ))
+
 # Loop through all devices and print their info
-for device_name_or_path in "${@}"; do
+for device_name_or_path in "${expanded_devices[@]}"; do
 
 	# Strip path part from device name
 	device_name=$(basename "${device_name_or_path}")
@@ -148,36 +176,44 @@ for device_name_or_path in "${@}"; do
 			data["status"]="${dmstatus[24]//-/OK}"
 		fi
 
+				# Print dm-cache data
+		if (( separator_needed )); then
+			printf "\n\n********************** DEVICE %s **********************\n" "${data[name]}"
+		fi
+
 		# Print debug information
 		debug_output
-
-		# Print dm-cache data
-		printf "\nDEVICE\n"
-		printf "========\n"
+		
+		printf "\nDEVICE\n========\n"
 		printf "%-*s%s\n" "26" "Device-mapper name: " "/dev/mapper/${data[name]}"
 		printf "%-*s%s\n" "26" "Origin size: " "$(to_iec $(( data[origin_length] - data[origin_start] )) )"
-		printf "%-*s%s\n" "26" "Discards: " "${data[discard_passdown]}"
+
+		if [[ $VERBOSE -eq 1 ]]; then
+			printf "%-*s%s\n" "26" "Discards: " "${data[discard_passdown]}"
+		fi
 
 		printf "\n"
-		printf "CACHE\n"
-		printf "========\n"
+		printf "CACHE\n========\n"
 		printf "%-*s%s\n" "26" "Size / Usage: " "$(to_iec $(( data[total_cache_blocks] * data[cache_block_size] ))) / $(to_iec $(( data[used_cache_blocks] * data[cache_block_size] ))) ($(( 100 * data[used_cache_blocks] / data[total_cache_blocks] )) %)"
 		printf "%-*s%s\n" "26" "Read Hit Rate: " "${data[read_hits]} / $(( data[read_misses] + data[read_hits] )) ($(( 100 * data[read_hits] / (data[read_hits] + data[read_misses] ) )) %)"
 		printf "%-*s%s\n" "26" "Write Hit Rate: " "${data[write_hits]} / $(( data[write_misses] + data[write_hits] )) ($(( 100 * data[write_hits] / ( data[write_hits] + data[write_misses] ) )) %)"
 		printf "%-*s%s\n" "26" "Dirty: " "$(to_iec "${data[dirty_cache]}")"
-		printf "%-*s%s\n" "26" "Block Size: " "$(to_iec "${data[cache_block_size]}")"
-		printf "%-*s%s\n" "26" "Promotions / Demotions: " "${data[promotions]} / ${data[demotions]}"
-		printf "%-*s%s\n" "26" "Migration Threshold: " "$(to_iec "${data[migration_threshold]}")"
-		printf "%-*s%s\n" "26" "Read-Write mode: " "${data[cache_rw]}"
-		printf "%-*s%s\n" "26" "Type: " "${data[cache_type]}"
-		printf "%-*s%s\n" "26" "Policy: " "${data[cache_policy]}"
-		printf "%-*s%s\n" "26" "Status: " "${data[status]}"
 
-		printf "\n"
-		printf "METADATA\n"
-		printf "========\n"
-		printf "%-*s%s\n" "26" "Size / Usage: " "$(to_iec $(( data[total_metadata_blocks] * data[metadata_block_size] ))) / $(to_iec $(( data[used_metadata_blocks] * data[metadata_block_size] ))) ($(( 100 * data[used_metadata_blocks] / data[total_metadata_blocks] )) %)"
+		if [[ $VERBOSE -eq 1 ]]; then
+			printf "%-*s%s\n" "26" "Block Size: " "$(to_iec "${data[cache_block_size]}")"
+			printf "%-*s%s\n" "26" "Promotions / Demotions: " "${data[promotions]} / ${data[demotions]}"
+			printf "%-*s%s\n" "26" "Migration Threshold: " "$(to_iec "${data[migration_threshold]}")"
+			printf "%-*s%s\n" "26" "Read-Write mode: " "${data[cache_rw]}"
+			printf "%-*s%s\n" "26" "Type: " "${data[cache_type]}"
+			printf "%-*s%s\n" "26" "Policy: " "${data[cache_policy]}"
+			printf "%-*s%s\n" "26" "Status: " "${data[status]}"
+	
+			printf "\n"
+			printf "METADATA\n"
+			printf "========\n"
+			printf "%-*s%s\n" "26" "Size / Usage: " "$(to_iec $(( data[total_metadata_blocks] * data[metadata_block_size] ))) / $(to_iec $(( data[used_metadata_blocks] * data[metadata_block_size] ))) ($(( 100 * data[used_metadata_blocks] / data[total_metadata_blocks] )) %)"
+		fi
 	else
-	    echo "Device not found or no valid status output."
+		echo "Device ${device_name_or_path} not found or no valid status output."
 	fi
 done
